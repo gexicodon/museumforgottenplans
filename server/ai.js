@@ -42,3 +42,39 @@ export const localCombo = (a, b) => ({
   pitch: `Что если применить логику идеи «${a.title}» к области «${b.cat.toLowerCase()}» из идеи «${b.title}»? Каждая идея закроет слабое место другой.`,
   first_step: 'Проверьте на двух-трёх людях, какая часть сочетания вызывает интерес, и начните с неё.',
 })
+
+/** Агент-куратор: диагноз → план воскрешения → микро-эксперимент → сочетания */
+export async function curatorAgent(idea, allIdeas, sequelsList = []) {
+  const similar = allIdeas
+    .filter((i) => i.id !== idea.id)
+    .map((i) => ({ ...i, score: sim(idea, i) }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 4)
+
+  const seqText = sequelsList.length
+    ? sequelsList.map((s) => s.text).join(' | ')
+    : 'пока никто не забрал'
+
+  const simText = similar.length
+    ? similar.map((s) => `- [#${s.id}] ${s.title} (похожесть ${(s.score * 100).toFixed(0)}%): ${s.text.slice(0, 120)}`).join('\n')
+    : 'похожих идей нет'
+
+  return ask(`Ты куратор «Музея несбывшихся планов». Твоя задача — помочь воскресить заброшенную идею.
+
+Идея #${idea.id}: «${idea.title}»
+Текст: ${idea.text}
+Категория: ${idea.cat}
+Уже есть продолжения: ${seqText}
+Похожие идеи в музее:
+${simText}
+
+Верни ТОЛЬКО JSON без markdown:
+{
+  "diagnosis": "почему идея могла застрять, 1-2 предложения",
+  "revival_plan": ["конкретный шаг 1", "шаг 2", "шаг 3"],
+  "micro_experiment": "что сделать за 1-2 часа, чтобы проверить интерес реальных людей",
+  "risk": "главный риск и как его снизить",
+  "suggested_combos": [{"with_id": 0, "title": "название сочетания", "why": "почему это сработает"}]
+}
+В suggested_combos используй id из списка похожих (или оставь пустой массив). Максимум 2 сочетания.`)
+}

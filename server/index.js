@@ -5,7 +5,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { clusterLocal, nameHall, combine, localCombo } from './ai.js'
+import { clusterLocal, nameHall, combine, localCombo, curatorAgent } from './ai.js'
 
 const { PORT = 3001, DB_PATH = 'data/museum-v3.db', ADMIN_EMAIL = '', ANTHROPIC_API_KEY = '' } = process.env
 const CATS = ['Технологии', 'Искусство', 'Город', 'Наука', 'Бизнес', 'Путешествия', 'Быт']
@@ -216,6 +216,23 @@ app.post('/api/combine', aiLimit, h(async (req, res) => {
   if (!ANTHROPIC_API_KEY) return res.json({ ...localCombo(a, b), ai: false })
   try { res.json({ ...(await cached('mix:' + [a.id, b.id].sort((x, y) => x - y).join(','), () => combine(a, b))), ai: true }) }
   catch (e) { console.error(e); res.json({ ...localCombo(a, b), ai: false }) }
+}))
+
+// ---- Агент-куратор
+app.post('/api/ideas/:id/curate', aiLimit, h(async (req, res) => {
+  need(req)
+  if (!ANTHROPIC_API_KEY) throw bad('ИИ не подключён на сервере', 503)
+  const id = Number(req.params.id)
+  const idea = byIds([id])[0]
+  if (!idea) throw bad('Идея не найдена', 404)
+  const all = visible()
+  const seq = db.prepare('SELECT text FROM sequels WHERE idea_id=?').all(id)
+  try {
+    res.json(await cached('curate:' + id, () => curatorAgent(idea, all, seq)))
+  } catch (e) {
+    console.error(e)
+    throw bad('Агент-куратор сейчас недоступен', 502)
+  }
 }))
 
 const dist = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'dist')

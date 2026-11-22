@@ -43,6 +43,8 @@ export function IdeaPage() {
   const [missing, setMissing] = useState(false)
   const [text, setText] = useState('')
   const [anon, setAnon] = useState(true)
+  const [curator, setCurator] = useState(null)
+  const [curating, setCurating] = useState(false)
   const reload = () => api.idea(id).then(setIdea).catch(() => setMissing(true))
   useEffect(() => { reload() }, [id, user]) // eslint-disable-line
   const like = useLike(idea || { id }, reload)
@@ -54,6 +56,14 @@ export function IdeaPage() {
     try { await api.take(idea.id, { text, anon }); setText(''); await reload() } catch (er) { toast(er.message) }
   }
   const done = idea.sequels.length > 0
+  const askCurator = async () => {
+    if (!user) return nav('/login', { state: { from: '/idea/' + idea.id } })
+    setCurating(true)
+    try {
+      setCurator(await api.curate(idea.id))
+    } catch (e) { toast(e.message) }
+    setCurating(false)
+  }
   return (
     <div className="page narrow">
       <Link to="/exhibition" className="back">← К экспозиции</Link>
@@ -66,6 +76,40 @@ export function IdeaPage() {
           <button className={'like' + (idea.liked ? ' on' : '')} onClick={like} aria-pressed={idea.liked}>♥ Жаль, что не сделано: {idea.likes}</button>
         </div>
       </article>
+
+      <section className="card ghost curator">
+        <h2 className="h" style={{ fontSize: '1.15rem', marginBottom: '0.5rem' }}>Агент-куратор</h2>
+        <p className="lead sm" style={{ marginBottom: '0.75rem' }}>ИИ смотрит идею, похожие экспонаты и предлагает план воскрешения.</p>
+        {!curator && (
+          <button className="btn sm" disabled={curating} onClick={askCurator}>
+            {curating ? 'Куратор думает…' : 'Спросить куратора'}
+          </button>
+        )}
+        {curator && (
+          <div className="curator-out">
+            <p><b>Диагноз:</b> {curator.diagnosis}</p>
+            <p><b>План воскрешения:</b></p>
+            <ol>{(curator.revival_plan || []).map((s, i) => <li key={i}>{s}</li>)}</ol>
+            <p><b>Микро-эксперимент:</b> {curator.micro_experiment}</p>
+            <p><b>Риск:</b> {curator.risk}</p>
+            {curator.suggested_combos?.length > 0 && (
+              <>
+                <p><b>Возможные сочетания:</b></p>
+                <ul>
+                  {curator.suggested_combos.map((c, i) => (
+                    <li key={i}>
+                      {c.with_id ? <Link to={'/idea/' + c.with_id}>{c.title || 'идея #' + c.with_id}</Link> : c.title}
+                      {c.why && <> — {c.why}</>}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+            <button className="btn alt sm" onClick={() => setCurator(null)} style={{ marginTop: '0.5rem' }}>Спросить снова</button>
+          </div>
+        )}
+      </section>
+
       <h2 className="h">Что из этого вышло</h2>
       {!done && <p>Пока никто не забрал эту идею. Станьте первым.</p>}
       {idea.sequels.map((s) => (
