@@ -12,13 +12,21 @@ import Architect from './pages/Architect.jsx'
 export default function App() {
   const [user, setUser] = useState(undefined)
   const [msg, setMsg] = useState('')
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuButton = useRef(null)
   const timer = useRef()
   const { pathname } = useLocation()
   const [gate, setGate] = useState(() => { try { return !sessionStorage.getItem('opened') && !matchMedia('(prefers-reduced-motion: reduce)').matches } catch { return false } })
   useReveal()
   const toast = useCallback((m) => { setMsg(m); clearTimeout(timer.current); timer.current = setTimeout(() => setMsg(''), 5000) }, [])
   useEffect(() => { api.me().then((r) => setUser(r.user)).catch(() => setUser(null)) }, [])
-  useEffect(() => { window.scrollTo(0, 0) }, [pathname])
+  useEffect(() => { window.scrollTo(0, 0); setMenuOpen(false) }, [pathname])
+  useEffect(() => {
+    if (!menuOpen) return
+    const onKeyDown = (e) => { if (e.key === 'Escape') { setMenuOpen(false); menuButton.current?.focus() } }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [menuOpen])
   if (user === undefined) return null
   const logout = async () => { await api.logout(); setUser(null) }
 
@@ -32,8 +40,12 @@ export default function App() {
       )}
       <header className="top">
         <div className="wrap bar">
-          <Link to="/" className="logo">Музей<br />несбывшихся<br /> планов</Link>
-          <nav>
+          <Link to="/" className="logo" onClick={() => setMenuOpen(false)}>Музей<br />несбывшихся<br /> планов</Link>
+          <button ref={menuButton} className="menu-toggle" type="button" aria-expanded={menuOpen} aria-controls="site-menu" aria-label={menuOpen ? 'Закрыть меню' : 'Открыть меню'} onClick={() => setMenuOpen((open) => !open)}>
+            <span aria-hidden="true">{menuOpen ? '×' : '☰'}</span><span>Меню</span>
+          </button>
+          <div id="site-menu" className={'site-menu' + (menuOpen ? ' is-open' : '')} onClick={(e) => { if (e.target.closest('a')) setMenuOpen(false) }}>
+          <nav aria-label="Основная навигация">
             <NavLink to="/exhibition">Экспозиция</NavLink>
             <NavLink to="/halls">Залы</NavLink>
             <NavLink to="/mix">Сочетания</NavLink>
@@ -44,7 +56,7 @@ export default function App() {
             {user ? (
               <>
                 <Link className="btn alt sm" to="/profile">{user.name}</Link>
-                <button className="btn ghostbtn sm" onClick={logout}>Выйти</button>
+                <button className="btn ghostbtn sm" onClick={() => { setMenuOpen(false); logout() }}>Выйти</button>
               </>
             ) : (
               <>
@@ -52,6 +64,7 @@ export default function App() {
                 <Link className="btn sm" to="/register">Регистрация</Link>
               </>
             )}
+          </div>
           </div>
         </div>
       </header>
