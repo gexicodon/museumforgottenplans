@@ -27,4 +27,5 @@ export const api = {
   pair: () => call('GET', '/pair'),
   combine: (a, b) => call('POST', '/combine', { a, b }),
   curate: (id) => call('POST', `/ideas/${id}/curate`),
+  architect: (b) => call('POST', '/architect', b),
 }

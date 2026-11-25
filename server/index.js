@@ -6,6 +6,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { clusterLocal, nameHall, combine, localCombo, curatorAgent } from './ai.js'
+import { architectAgent } from './architect-agent.js'
+import { briefSchema } from './architect-mcp.js'
 
 const { PORT = 3001, DB_PATH = 'data/museum-v3.db', ADMIN_EMAIL = '', ANTHROPIC_API_KEY = '' } = process.env
 const CATS = ['Технологии', 'Искусство', 'Город', 'Наука', 'Бизнес', 'Путешествия', 'Быт']
@@ -219,6 +221,18 @@ app.post('/api/combine', aiLimit, h(async (req, res) => {
 }))
 
 // ---- Агент-куратор
+app.post('/api/architect', aiLimit, h(async (req, res) => {
+  if (!req.user) throw bad('Войдите в аккаунт', 401)
+  const { ideaId, ...input } = req.body || {}
+  if (!Number.isSafeInteger(ideaId) || ideaId < 1) throw bad('Выберите идею')
+  const idea = byIds([ideaId])[0]
+  if (!idea) throw bad('Идея не найдена', 404)
+  const parsed = briefSchema.safeParse({ ...input, idea: { title: idea.title, text: idea.text } })
+  if (!parsed.success) throw bad('Проверьте навыки, часы в неделю, бюджет и желаемый результат')
+  try { res.json(await architectAgent(parsed.data)) }
+  catch (e) { console.error('Project Architect:', e.message); throw bad('Не удалось построить план. Попробуйте позже.', 503) }
+}))
+
 app.post('/api/ideas/:id/curate', aiLimit, h(async (req, res) => {
   need(req)
   if (!ANTHROPIC_API_KEY) throw bad('ИИ не подключён на сервере', 503)
