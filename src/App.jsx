@@ -6,6 +6,7 @@ import Home from './pages/Home.jsx'
 import { Exhibition, IdeaPage, Submit } from './pages/Ideas.jsx'
 import { Halls, Mix } from './pages/Ai.jsx'
 import { Auth, Profile } from './pages/Account.jsx'
+import Admin from './pages/Admin.jsx'
 
 export default function App() {
   const [user, setUser] = useState(undefined)
@@ -35,6 +36,7 @@ export default function App() {
             <NavLink to="/exhibition">Экспозиция</NavLink>
             <NavLink to="/halls">Залы</NavLink>
             <NavLink to="/mix">Сочетания</NavLink>
+            {user?.admin && <NavLink to="/admin">Админка</NavLink>}
           </nav>
           <div className="acc">
             {user ? (
@@ -63,6 +65,7 @@ export default function App() {
           <Route path="/login" element={<Auth mode="login" />} />
           <Route path="/register" element={<Auth mode="register" />} />
           <Route path="/profile" element={<Profile />} />
+          <Route path="/admin" element={<Admin />} />
           <Route path="*" element={<div className="page"><h1 className="h">Такого зала нет</h1><Link className="btn" to="/">В начало</Link></div>} />
         </Routes>
         </div>

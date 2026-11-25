@@ -6,6 +6,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { clusterLocal, nameHall, combine, localCombo, curatorAgent } from './ai.js'
+import { initializeRoles, adminRouter } from './admin.js'
 
 const { PORT = 3001, DB_PATH = 'data/museum-v3.db', ADMIN_USER_IDS = '', ANTHROPIC_API_KEY = '' } = process.env
 const configuredAdminIds = ADMIN_USER_IDS.trim() ? ADMIN_USER_IDS.split(',').map((id) => id.trim()) : []
@@ -26,9 +27,7 @@ CREATE TABLE IF NOT EXISTS reports(idea_id INTEGER, user_id INTEGER, PRIMARY KEY
 CREATE TABLE IF NOT EXISTS sequels(id INTEGER PRIMARY KEY, idea_id INTEGER NOT NULL, user_id INTEGER, anon INTEGER DEFAULT 1, text TEXT NOT NULL, at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS cache(k TEXT PRIMARY KEY, v TEXT);`)
 
-for (const id of adminIds) {
-  if (!db.prepare('SELECT 1 FROM users WHERE id=?').get(Number(id))) throw new Error('ADMIN_USER_IDS must contain only IDs of existing users')
-}
+initializeRoles(db, adminIds)
 
 if (!db.prepare('SELECT 1 FROM ideas').get()) {
   const ins = db.prepare('INSERT INTO ideas(title,text,cat,at) VALUES(?,?,?,?)'), now = Date.now()
@@ -45,7 +44,7 @@ if (!db.prepare('SELECT 1 FROM ideas').get()) {
 const sha = (s) => crypto.createHash('sha256').update(s).digest('hex')
 const hashPw = (p) => { const s = crypto.randomBytes(16); return s.toString('hex') + ':' + crypto.scryptSync(p, s, 64).toString('hex') }
 const checkPw = (p, st) => { const [s, h] = st.split(':'); return crypto.timingSafeEqual(crypto.scryptSync(p, Buffer.from(s, 'hex'), 64), Buffer.from(h, 'hex')) }
-const mkUser = (r) => ({ id: r.id, name: r.name, admin: adminIds.has(String(r.id)) })
+const mkUser = (r) => ({ id: r.id, name: r.name, role: r.role || 'user', admin: r.role === 'admin' })
 const bad = (m, status = 400) => Object.assign(new Error(m), { status })
 const need = (req) => { if (!req.user) throw bad('Войдите в аккаунт', 401); return req.user }
 const clean = (s, max) => String(s ?? '').trim().slice(0, max)
@@ -92,7 +91,7 @@ app.use((req, _res, next) => {
   req.user = null
   const t = (req.get('cookie') || '').match(/(?:^|;\s*)sid=([a-f0-9]{64})/)?.[1]
   if (t) {
-    const r = db.prepare('SELECT u.id,u.name,u.email FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.id=? AND s.exp>?').get(sha(t), Date.now())
+    const r = db.prepare('SELECT u.id,u.name,u.email,u.role FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.id=? AND s.exp>?').get(sha(t), Date.now())
     if (r) req.user = { ...mkUser(r), sid: sha(t) }
   }
   next()
@@ -105,7 +104,8 @@ const aiLimit = lim(30, 'Лимит запросов к ИИ исчерпан. �
 app.get('/api/config', (_q, res) => res.json({ ai: !!ANTHROPIC_API_KEY, cats: CATS }))
 
 // ---- аккаунты
-app.get('/api/auth/me', (req, res) => res.json({ user: req.user && { id: req.user.id, name: req.user.name, admin: req.user.admin } }))
+app.get('/api/auth/me', (req, res) => res.json({ user: req.user && { id: req.user.id, name: req.user.name, role: req.user.role, admin: req.user.admin } }))
+app.use('/api/admin', adminRouter(db, need))
 app.post('/api/auth/register', authLimit, h((req, res) => {
   const name = clean(req.body.name, 24), email = clean(req.body.email, 120).toLowerCase(), pw = String(req.body.password || '')
   if (!/^[\p{L}\p{N}_ .-]{2,24}$/u.test(name)) throw bad('Имя: 2–24 символа, буквы, цифры, пробел, точка или дефис')

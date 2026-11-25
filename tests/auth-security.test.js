@@ -102,7 +102,7 @@ test('authorization and moderator privileges use isolated database', async () =>
     await stop(instance.child); instance = null
     instance = await start(dbPath); base = instance.base
     const removed = await request(base, 'POST', '/api/auth/login', { email: 'admin@example.test', password: 'password123' })
-    assert.equal(removed.data.user.admin, false, 'removing ID revokes access')
+    assert.equal(removed.data.user.admin, true, 'bootstrap role persists in SQLite after configuration is removed')
   } finally {
     if (instance) await stop(instance.child)
     if (path.dirname(dir) === path.resolve(os.tmpdir()) && path.basename(dir).startsWith('museum-auth-test-')) await rm(dir, { recursive: true, force: true })
