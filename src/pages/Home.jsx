@@ -23,8 +23,10 @@ export default function Home() {
   return (
     <>
       <section className="hero" onMouseMove={light}>
-        <div className="beam" aria-hidden="true" /><div className="beam b2" aria-hidden="true" />
-        {motes.map((m, i) => <i key={i} className="mote" style={m} aria-hidden="true" />)}
+        <div className="hero-decor" aria-hidden="true">
+          <div className="beam" /><div className="beam b2" />
+          {motes.map((m, i) => <i key={i} className="mote" style={m} />)}
+        </div>
         <h1 ref={h1}>Музей несбывшихся планов</h1>
         <p className="lead">Люди анонимно оставляют здесь идеи, до которых не дошли руки. Любой может забрать идею, довести её до конца и показать, что получилось.</p>
         <div className="cta">

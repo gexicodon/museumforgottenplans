@@ -110,6 +110,8 @@ export function IdeaPage() {
         )}
       </section>
 
+      <p><Link className="btn alt" to={'/architect?idea=' + idea.id}>Составить технический план</Link></p>
+
       <h2 className="h">Что из этого вышло</h2>
       {!done && <p>Пока никто не забрал эту идею. Станьте первым.</p>}
       {idea.sequels.map((s) => (

@@ -6,8 +6,14 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { clusterLocal, nameHall, combine, localCombo, curatorAgent } from './ai.js'
+import { initializeRoles, adminRouter } from './admin.js'
+import { architectAgent } from './architect-agent.js'
+import { briefSchema } from './architect-mcp.js'
 
-const { PORT = 3001, DB_PATH = 'data/museum-v3.db', ADMIN_EMAIL = '', ANTHROPIC_API_KEY = '' } = process.env
+const { PORT = 3001, DB_PATH = 'data/museum-v3.db', ADMIN_USER_IDS = '', ANTHROPIC_API_KEY = '' } = process.env
+const configuredAdminIds = ADMIN_USER_IDS.trim() ? ADMIN_USER_IDS.split(',').map((id) => id.trim()) : []
+if (configuredAdminIds.some((id) => !/^[1-9]\d*$/.test(id) || !Number.isSafeInteger(Number(id)))) throw new Error('ADMIN_USER_IDS must contain comma-separated positive integer IDs')
+const adminIds = new Set(configuredAdminIds)
 const CATS = ['Технологии', 'Искусство', 'Город', 'Наука', 'Бизнес', 'Путешествия', 'Быт']
 const DAY = 864e5
 
@@ -22,6 +28,8 @@ CREATE TABLE IF NOT EXISTS likes(idea_id INTEGER, user_id INTEGER, PRIMARY KEY(i
 CREATE TABLE IF NOT EXISTS reports(idea_id INTEGER, user_id INTEGER, PRIMARY KEY(idea_id, user_id));
 CREATE TABLE IF NOT EXISTS sequels(id INTEGER PRIMARY KEY, idea_id INTEGER NOT NULL, user_id INTEGER, anon INTEGER DEFAULT 1, text TEXT NOT NULL, at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS cache(k TEXT PRIMARY KEY, v TEXT);`)
+
+initializeRoles(db, adminIds)
 
 if (!db.prepare('SELECT 1 FROM ideas').get()) {
   const ins = db.prepare('INSERT INTO ideas(title,text,cat,at) VALUES(?,?,?,?)'), now = Date.now()
@@ -38,12 +46,11 @@ if (!db.prepare('SELECT 1 FROM ideas').get()) {
 const sha = (s) => crypto.createHash('sha256').update(s).digest('hex')
 const hashPw = (p) => { const s = crypto.randomBytes(16); return s.toString('hex') + ':' + crypto.scryptSync(p, s, 64).toString('hex') }
 const checkPw = (p, st) => { const [s, h] = st.split(':'); return crypto.timingSafeEqual(crypto.scryptSync(p, Buffer.from(s, 'hex'), 64), Buffer.from(h, 'hex')) }
-const isAdminEmail = (e) => !!ADMIN_EMAIL && e.toLowerCase() === ADMIN_EMAIL.toLowerCase()
-const mkUser = (r) => ({ id: r.id, name: r.name, admin: isAdminEmail(r.email) })
+const mkUser = (r) => ({ id: r.id, name: r.name, role: r.role || 'user', admin: r.role === 'admin' })
 const bad = (m, status = 400) => Object.assign(new Error(m), { status })
-const need = (req) => req.user || bad('Войдите в аккаунт', 401)
+const need = (req) => { if (!req.user) throw bad('Войдите в аккаунт', 401); return req.user }
 const clean = (s, max) => String(s ?? '').trim().slice(0, max)
-const h = (fn) => (req, res) => Promise.resolve(fn(req, res)).catch((e) => {
+const h = (fn) => (req, res) => Promise.resolve().then(() => fn(req, res)).catch((e) => {
   if (!e.status) console.error(e)
   res.status(e.status || 500).json({ error: e.status ? e.message : 'Ошибка сервера' })
 })
@@ -86,7 +93,7 @@ app.use((req, _res, next) => {
   req.user = null
   const t = (req.get('cookie') || '').match(/(?:^|;\s*)sid=([a-f0-9]{64})/)?.[1]
   if (t) {
-    const r = db.prepare('SELECT u.id,u.name,u.email FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.id=? AND s.exp>?').get(sha(t), Date.now())
+    const r = db.prepare('SELECT u.id,u.name,u.email,u.role FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.id=? AND s.exp>?').get(sha(t), Date.now())
     if (r) req.user = { ...mkUser(r), sid: sha(t) }
   }
   next()
@@ -99,7 +106,8 @@ const aiLimit = lim(30, 'Лимит запросов к ИИ исчерпан. �
 app.get('/api/config', (_q, res) => res.json({ ai: !!ANTHROPIC_API_KEY, cats: CATS }))
 
 // ---- аккаунты
-app.get('/api/auth/me', (req, res) => res.json({ user: req.user && { id: req.user.id, name: req.user.name, admin: req.user.admin } }))
+app.get('/api/auth/me', (req, res) => res.json({ user: req.user && { id: req.user.id, name: req.user.name, role: req.user.role, admin: req.user.admin } }))
+app.use('/api/admin', adminRouter(db, need))
 app.post('/api/auth/register', authLimit, h((req, res) => {
   const name = clean(req.body.name, 24), email = clean(req.body.email, 120).toLowerCase(), pw = String(req.body.password || '')
   if (!/^[\p{L}\p{N}_ .-]{2,24}$/u.test(name)) throw bad('Имя: 2–24 символа, буквы, цифры, пробел, точка или дефис')
@@ -219,6 +227,18 @@ app.post('/api/combine', aiLimit, h(async (req, res) => {
 }))
 
 // ---- Агент-куратор
+app.post('/api/architect', aiLimit, h(async (req, res) => {
+  if (!req.user) throw bad('Войдите в аккаунт', 401)
+  const { ideaId, ...input } = req.body || {}
+  if (!Number.isSafeInteger(ideaId) || ideaId < 1) throw bad('Выберите идею')
+  const idea = byIds([ideaId])[0]
+  if (!idea) throw bad('Идея не найдена', 404)
+  const parsed = briefSchema.safeParse({ ...input, idea: { title: idea.title, text: idea.text } })
+  if (!parsed.success) throw bad('Проверьте навыки, часы в неделю, бюджет и желаемый результат')
+  try { res.json(await architectAgent(parsed.data)) }
+  catch (e) { console.error('Project Architect:', e.message); throw bad('Не удалось построить план. Попробуйте позже.', 503) }
+}))
+
 app.post('/api/ideas/:id/curate', aiLimit, h(async (req, res) => {
   need(req)
   if (!ANTHROPIC_API_KEY) throw bad('ИИ не подключён на сервере', 503)
