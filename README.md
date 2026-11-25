@@ -2,6 +2,8 @@
 
 React + Vite + React Router (клиент), Express + SQLite (сервер). Данные в `data/museum-v3.db`.
 
+Отдельный технический план для идеи: [AI Project Architect](ARCHITECT.md).
+
 ## Запуск
     cp .env.example .env
     npm install
