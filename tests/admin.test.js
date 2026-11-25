@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import Database from 'better-sqlite3'
 import crypto from 'node:crypto'
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { once } from 'node:events'
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
@@ -11,6 +11,7 @@ import net from 'node:net'
 import { fileURLToPath } from 'node:url'
 
 const serverFile = fileURLToPath(new URL('../server/index.js', import.meta.url))
+const recoveryFile = fileURLToPath(new URL('../scripts/recover-admin.js', import.meta.url))
 async function start(dbPath, ids = '') {
   const socket = net.createServer().listen(0, '127.0.0.1')
   await once(socket, 'listening')
@@ -56,6 +57,7 @@ test('legacy migration, role isolation, audit and last administrator', async () 
       assert.equal((await request(base, method, url, tokens[1], { role: 'admin' })).status, 403)
     }
     assert.equal((await request(base, 'GET', '/api/auth/me', tokens[0])).body.user.role, 'admin')
+    assert.notEqual(spawnSync(process.execPath, [recoveryFile, '--db', dbPath, '--user-id', '2']).status, 0, 'recovery must not override an existing admin')
     assert.equal((await request(base, 'GET', '/api/auth/me', tokens[1])).body.user.role, 'user')
     assert.equal((await request(base, 'GET', '/api/ideas/1')).body.title, 'Idea')
     const users = await request(base, 'GET', '/api/admin/users?q=Test', tokens[0])
@@ -91,6 +93,13 @@ test('legacy migration, role isolation, audit and last administrator', async () 
     instance = await start(dbPath, '1'); base = instance.base
     assert.equal((await request(base, 'GET', '/api/auth/me', tokens[0])).body.user.role, 'user', 'completed bootstrap cannot silently restore revoked rights')
     assert.equal((await request(base, 'GET', '/api/auth/me', tokens[2])).body.user.role, 'user')
+    await stop(instance.child); instance = null
+    assert.notEqual(spawnSync(process.execPath, [recoveryFile, '--db', dbPath, '--user-id', '999']).status, 0, 'recovery requires an existing account')
+    assert.equal(spawnSync(process.execPath, [recoveryFile, '--db', dbPath, '--user-id', '2']).status, 0)
+    instance = await start(dbPath); base = instance.base
+    assert.equal((await request(base, 'GET', '/api/auth/me', tokens[1])).body.user.role, 'admin')
+    const recovered = await request(base, 'GET', '/api/admin/audit', tokens[1])
+    assert.deepEqual({ actor: recovered.body.entries[0].actor_id, target: recovered.body.entries[0].target_id, to: recovered.body.entries[0].new_role }, { actor: null, target: 2, to: 'admin' })
   } finally {
     if (instance) await stop(instance.child)
     if (path.dirname(dir) === path.resolve(os.tmpdir()) && path.basename(dir).startsWith('museum-admin-test-')) await rm(dir, { recursive: true, force: true })

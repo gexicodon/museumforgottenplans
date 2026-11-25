@@ -54,7 +54,7 @@ test('authorization and moderator privileges use isolated database', async () =>
       ['GET', '/api/profile'], ['POST', '/api/ideas', {}], ['DELETE', '/api/ideas/1'],
       ['POST', '/api/ideas/1/like'], ['POST', '/api/ideas/1/sequels'], ['DELETE', '/api/sequels/1'],
       ['POST', '/api/ideas/1/report'], ['POST', '/api/halls/name'], ['POST', '/api/combine'],
-      ['POST', '/api/ideas/1/curate'],
+      ['POST', '/api/ideas/1/curate'], ['POST', '/api/architect'],
     ]
     for (const [method, url, body] of routes) {
       const response = await request(base, method, url, body)

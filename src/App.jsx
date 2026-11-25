@@ -7,6 +7,7 @@ import { Exhibition, IdeaPage, Submit } from './pages/Ideas.jsx'
 import { Halls, Mix } from './pages/Ai.jsx'
 import { Auth, Profile } from './pages/Account.jsx'
 import Admin from './pages/Admin.jsx'
+import Architect from './pages/Architect.jsx'
 
 export default function App() {
   const [user, setUser] = useState(undefined)
@@ -37,6 +38,7 @@ export default function App() {
             <NavLink to="/halls">Залы</NavLink>
             <NavLink to="/mix">Сочетания</NavLink>
             {user?.admin && <NavLink to="/admin">Админка</NavLink>}
+            <NavLink to="/architect">Архитектор</NavLink>
           </nav>
           <div className="acc">
             {user ? (
@@ -62,6 +64,7 @@ export default function App() {
           <Route path="/submit" element={<Submit />} />
           <Route path="/halls" element={<Halls />} />
           <Route path="/mix" element={<Mix />} />
+          <Route path="/architect" element={<Architect />} />
           <Route path="/login" element={<Auth mode="login" />} />
           <Route path="/register" element={<Auth mode="register" />} />
           <Route path="/profile" element={<Profile />} />

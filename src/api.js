@@ -30,4 +30,5 @@ export const api = {
   adminUsers: (q, offset = 0) => call('GET', `/admin/users?q=${encodeURIComponent(q)}&offset=${offset}`),
   adminAudit: () => call('GET', '/admin/audit'),
   adminSetRole: (id, role) => call('POST', `/admin/users/${id}/role`, { role }),
+  architect: (b) => call('POST', '/architect', b),
 }

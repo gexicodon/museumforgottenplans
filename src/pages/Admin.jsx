@@ -43,7 +43,7 @@ export default function Admin() {
     </>}
     <h2 className="h" style={{ marginTop: '2rem' }}>Журнал изменений ролей</h2>
     {!audit.length ? <p>Записей пока нет.</p> : <ul className="taken">{audit.map((entry) => <li key={entry.id}>
-      <b>{entry.actor_id === null ? 'Первоначальное назначение' : `Исполнитель #${entry.actor_id}`}</b>: пользователь #{entry.target_id}, {labels[entry.old_role]} → {labels[entry.new_role]}; {new Date(entry.at).toLocaleString('ru-RU')}
+      <b>{entry.actor_id === null ? 'Назначение оператором сервера' : `Исполнитель #${entry.actor_id}`}</b>: пользователь #{entry.target_id}, {labels[entry.old_role]} → {labels[entry.new_role]}; {new Date(entry.at).toLocaleString('ru-RU')}
     </li>)}</ul>}
   </div>
 }
