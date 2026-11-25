@@ -7,7 +7,10 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { clusterLocal, nameHall, combine, localCombo, curatorAgent } from './ai.js'
 
-const { PORT = 3001, DB_PATH = 'data/museum-v3.db', ADMIN_EMAIL = '', ANTHROPIC_API_KEY = '' } = process.env
+const { PORT = 3001, DB_PATH = 'data/museum-v3.db', ADMIN_USER_IDS = '', ANTHROPIC_API_KEY = '' } = process.env
+const configuredAdminIds = ADMIN_USER_IDS.trim() ? ADMIN_USER_IDS.split(',').map((id) => id.trim()) : []
+if (configuredAdminIds.some((id) => !/^[1-9]\d*$/.test(id) || !Number.isSafeInteger(Number(id)))) throw new Error('ADMIN_USER_IDS must contain comma-separated positive integer IDs')
+const adminIds = new Set(configuredAdminIds)
 const CATS = ['Технологии', 'Искусство', 'Город', 'Наука', 'Бизнес', 'Путешествия', 'Быт']
 const DAY = 864e5
 
@@ -22,6 +25,10 @@ CREATE TABLE IF NOT EXISTS likes(idea_id INTEGER, user_id INTEGER, PRIMARY KEY(i
 CREATE TABLE IF NOT EXISTS reports(idea_id INTEGER, user_id INTEGER, PRIMARY KEY(idea_id, user_id));
 CREATE TABLE IF NOT EXISTS sequels(id INTEGER PRIMARY KEY, idea_id INTEGER NOT NULL, user_id INTEGER, anon INTEGER DEFAULT 1, text TEXT NOT NULL, at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS cache(k TEXT PRIMARY KEY, v TEXT);`)
+
+for (const id of adminIds) {
+  if (!db.prepare('SELECT 1 FROM users WHERE id=?').get(Number(id))) throw new Error('ADMIN_USER_IDS must contain only IDs of existing users')
+}
 
 if (!db.prepare('SELECT 1 FROM ideas').get()) {
   const ins = db.prepare('INSERT INTO ideas(title,text,cat,at) VALUES(?,?,?,?)'), now = Date.now()
@@ -38,12 +45,11 @@ if (!db.prepare('SELECT 1 FROM ideas').get()) {
 const sha = (s) => crypto.createHash('sha256').update(s).digest('hex')
 const hashPw = (p) => { const s = crypto.randomBytes(16); return s.toString('hex') + ':' + crypto.scryptSync(p, s, 64).toString('hex') }
 const checkPw = (p, st) => { const [s, h] = st.split(':'); return crypto.timingSafeEqual(crypto.scryptSync(p, Buffer.from(s, 'hex'), 64), Buffer.from(h, 'hex')) }
-const isAdminEmail = (e) => !!ADMIN_EMAIL && e.toLowerCase() === ADMIN_EMAIL.toLowerCase()
-const mkUser = (r) => ({ id: r.id, name: r.name, admin: isAdminEmail(r.email) })
+const mkUser = (r) => ({ id: r.id, name: r.name, admin: adminIds.has(String(r.id)) })
 const bad = (m, status = 400) => Object.assign(new Error(m), { status })
-const need = (req) => req.user || bad('Войдите в аккаунт', 401)
+const need = (req) => { if (!req.user) throw bad('Войдите в аккаунт', 401); return req.user }
 const clean = (s, max) => String(s ?? '').trim().slice(0, max)
-const h = (fn) => (req, res) => Promise.resolve(fn(req, res)).catch((e) => {
+const h = (fn) => (req, res) => Promise.resolve().then(() => fn(req, res)).catch((e) => {
   if (!e.status) console.error(e)
   res.status(e.status || 500).json({ error: e.status ? e.message : 'Ошибка сервера' })
 })
